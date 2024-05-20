@@ -195,6 +195,7 @@ def text2image_ldm_stable(
                     latents = noise_func(roll, latents).cuda()
                     prev_latent = latents
                 already_switched = True
+                control = None
 
         latents = diffusion_step(model, controller, latents, curr_control, context, t, guidance_scale, low_resource, generator)
 
