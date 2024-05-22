@@ -138,7 +138,7 @@ def init_latent(latent, model, height, width, generator, batch_size):
 def text2image_ldm_stable(
     model,
     prompt: List[str],
-    controller,
+    controller = None,
     roll: int = 0,
     num_inference_steps: int = 20,
     guidance_scale: float = 8.0,
@@ -152,7 +152,8 @@ def text2image_ldm_stable(
     control_func = None,
     low_resource: bool = False,
 ):
-    register_attention_control(model, controller)
+    if control is not None:
+        register_attention_control(model, controller)
     height = width = 512
     batch_size = len(prompt)
 
