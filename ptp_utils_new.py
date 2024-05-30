@@ -147,7 +147,6 @@ def text2image_ldm_stable(
     precalced: bool = False,
     noise_func: Optional[Callable] = None,
     switch_percent: int = 0,
-    annealing: int = 0,
     control = None,
     control_func = None,
     low_resource: bool = False,
@@ -179,7 +178,6 @@ def text2image_ldm_stable(
     curr_control = control
     model.scheduler.set_timesteps(num_inference_steps)
     precalced_latent = None
-    prev_latent = None
     count = 0
     for t in tqdm(model.scheduler.timesteps):
         percentage = (count / num_inference_steps) * 100
@@ -187,31 +185,22 @@ def text2image_ldm_stable(
             if percentage <= switch_percent:
                 count += 1
                 continue
-        if annealing == 0:
-            if percentage > switch_percent and not already_switched:
-                if control is not None and control_func is not None:
-                    curr_control = control_func(roll, control)
-                if noise_func is not None:
-                    precalced_latent = latents
-                    latents = noise_func(roll, latents).cuda()
-                    prev_latent = latents
-                already_switched = True
-                control = None
+        if percentage > switch_percent and not already_switched:
+            if control is not None and control_func is not None:
+                curr_control = control_func(roll, control)
+            if noise_func is not None:
+                precalced_latent = latents
+                latents = noise_func(roll, latents).cuda()
+            already_switched = True
+            control = None
 
         latents = diffusion_step(model, controller, latents, curr_control, context, t, guidance_scale, low_resource, generator)
-
-        if annealing != 0:
-            steps = int(np.ceil(roll/annealing))
-            if count < steps:
-                move = min(annealing, roll-(annealing*count))
-                curr_control = control_func(move, curr_control)
-                latents = noise_func(move, latents).cuda()
 
         count += 1
     
     image = latent2image(model.vae, latents)
 
-    return image, precalced_latent, prev_latent, latents
+    return image, precalced_latent, latents
 
 
 def register_attention_control(model, controller):
