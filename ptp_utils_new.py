@@ -96,7 +96,7 @@ def diffusion_step(model, controller, latents, control, context, t, guidance_sca
         noise_prediction_text = model.unet(latents, t, encoder_hidden_states=context[1])["sample"]
     noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
     latents = model.scheduler.step(noise_pred, t, latents, generator=generator)["prev_sample"]
-    if control is not None:
+    if controller is not None:
         latents = controller.step_callback(latents)
     return latents
 
@@ -151,7 +151,7 @@ def text2image_ldm_stable(
     control_func = None,
     low_resource: bool = False,
 ):
-    if control is not None:
+    if controller is not None:
         register_attention_control(model, controller)
     height = width = 512
     batch_size = len(prompt)
@@ -186,10 +186,10 @@ def text2image_ldm_stable(
                 count += 1
                 continue
         if percentage > switch_percent and not already_switched:
+            precalced_latent = latents
             if control is not None and control_func is not None:
                 curr_control = control_func(roll, control)
             if noise_func is not None:
-                precalced_latent = latents
                 latents = noise_func(roll, latents).cuda()
             already_switched = True
             control = None
