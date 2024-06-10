@@ -138,18 +138,16 @@ def init_latent(latent, model, height, width, generator, batch_size):
 def text2image_ldm_stable(
     model,
     prompt: List[str],
+    latent: Optional[torch.FloatTensor] = None,
+    control = None,
+    precalced: bool = False,
     controller = None,
-    roll: int = 0,
+    switch_percent: int = 0,
     num_inference_steps: int = 20,
     guidance_scale: float = 8.0,
-    generator: Optional[torch.Generator] = None,
-    latent: Optional[torch.FloatTensor] = None,
-    precalced: bool = False,
-    noise_func: Optional[Callable] = None,
-    switch_percent: int = 0,
-    control = None,
-    control_func = None,
     low_resource: bool = False,
+    generator: Optional[torch.Generator] = None,
+    logging: bool = False,
 ):
     if controller is not None:
         register_attention_control(model, controller)
@@ -175,6 +173,8 @@ def text2image_ldm_stable(
         context = torch.cat(context)
     latent, latents = init_latent(latent, model, height, width, generator, batch_size)
     already_switched = False
+    means = []
+    stds = []
     curr_control = control
     model.scheduler.set_timesteps(num_inference_steps)
     precalced_latent = None
@@ -182,26 +182,25 @@ def text2image_ldm_stable(
     for t in tqdm(model.scheduler.timesteps):
         percentage = (count / num_inference_steps) * 100
         if precalced:
-            if percentage <= switch_percent:
+            if percentage < switch_percent:
                 count += 1
                 continue
-        if percentage > switch_percent and not already_switched:
+        if percentage >= switch_percent and not already_switched:
             precalced_latent = latents
-            if control is not None and control_func is not None:
-                curr_control = control_func(roll, control)
-            if noise_func is not None:
-                latents = noise_func(roll, latents).cuda()
             already_switched = True
-            control = None
 
         latents = diffusion_step(model, controller, latents, curr_control, context, t, guidance_scale, low_resource, generator)
+        if logging:
+            means.append(float(latents.mean().cpu()))
+            stds.append(float(latents.std().cpu()))
 
         count += 1
     
     image = latent2image(model.vae, latents)
-
-    return image, precalced_latent, latents
-
+    if not logging:
+        return image, precalced_latent, latents
+    else:
+        return image, means, stds
 
 def register_attention_control(model, controller):
     def ca_forward(self, place_in_unet):
