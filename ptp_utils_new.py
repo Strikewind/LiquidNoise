@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+### This file contains code from Google, with functions that have been modified where stated.
+
 import numpy as np
 import torch
 import torch.nn.functional as nnf
@@ -69,6 +71,8 @@ def view_images(images, num_rows=1, offset_ratio=0.02):
 
 
 def diffusion_step(model, controller, latents, control, context, t, guidance_scale, generator=None):
+    # Interfaces with the diffusers library to perform diffusion steps.
+    # This function was modified to include ControlNet and to remove unnecessary parts.
     if control is not None:
         width, height = control.size
         image = model.prepare_image(
@@ -154,6 +158,8 @@ def text2image_ldm_stable(
     generator: Optional[torch.Generator] = None,
     logging: bool = False,
 ):
+    # This function was modified to interface with liquidnoise.py. There is additional functionality.
+
     if type(prompt) is str:
         prompt = [prompt]
     if controller is not None:
@@ -532,6 +538,8 @@ class AttentionReplace(AttentionControlEdit):
         self.mapper = seq_aligner.get_replacement_mapper(prompt, model.tokenizer).to(device)
 
 class AttentionPermute(AttentionControlEdit):
+    # This class is not created by Google.
+    # It was newly created to roll the attention maps utilising Google's method (for experimentation purposes).
 
     def replace_cross_attention(self, attn_base, att_replace, prompt, NUM_DIFFUSION_STEPS=20, roll_frac=4):
         if self.cur_step > 0.25*NUM_DIFFUSION_STEPS:

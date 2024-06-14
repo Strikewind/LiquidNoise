@@ -1,3 +1,25 @@
+# MIT License
+
+# Copyright (c) 2024 Muhammas Haaris Khan (https://github.com/Strikewind)
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 from functools import partial
 import torch
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, DDIMScheduler
@@ -36,6 +58,7 @@ class Model():
 
 def run_and_display(prompt, model, controller=EmptyControl(), latent=None, control=None, 
 					num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE, seed=SEED):
+	# Run diffusion on one prompt and display the result. ControlNet optional.
     if type(prompt) is str:
         prompt = [prompt]
     generator=torch.Generator().manual_seed(seed)
@@ -51,6 +74,7 @@ def run_and_display(prompt, model, controller=EmptyControl(), latent=None, contr
 
 
 def show_histogram(x_t):
+	# Useful for analysing the distribution of latents (debug purposes)
 	if torch.is_tensor(x_t):
 		x_t = x_t.cpu().numpy()
 	plt.hist(x_t.flatten(), bins=100)
@@ -60,6 +84,7 @@ def show_histogram(x_t):
 	plt.show()
 
 def q_q_plot(x_t):
+	# Useful for analysing the distribution of latents (debug purposes)
 	if torch.is_tensor(x_t):
 		x_t = x_t.cpu().numpy()
 	sorted_x_t = np.sort(x_t.flatten())
@@ -75,6 +100,7 @@ def q_q_plot(x_t):
 	plt.show()
 
 def gif_to_wide_image(gif_path, space_between=20):
+	# splits a gif into a wide image sequence
 	gif = imageio.mimread(gif_path)
 	frame_width, frame_height = gif[0].shape[1], gif[0].shape[0]
 	total_width = len(gif) * frame_width + (len(gif) - 1) * space_between
@@ -84,37 +110,18 @@ def gif_to_wide_image(gif_path, space_between=20):
 		wide_image.paste(frame_image, (i * (frame_width + space_between), 0))
 	display(wide_image)
 
-def DFT(x_t):
-	if torch.is_tensor(x_t):
-		x_t = x_t.cpu().numpy()
-	x_t_ = x_t.flatten()
-	fft = np.fft.fft(x_t_)
-	n = len(fft)
-	print(np.abs(fft)[0:5])
-	freq = np.fft.fftfreq(n)
-	plt.plot(freq[:n//2], np.abs(fft)[:n//2])
-	plt.show()
-
-def DFT_2D(x_t):
-	if torch.is_tensor(x_t):
-		x_t = x_t.cpu().numpy()
-	x_t_ = x_t[0][0]
-	fft = np.fft.fft2(x_t_)
-	fft = np.fft.fftshift(fft)
-	fft = np.abs(fft)
-	plt.imshow(np.log(fft+1), cmap='gray')
-	plt.show()
-
 def view_image(image):
 	if type(image) is torch.Tensor:
-		image = image[0].cpu().numpy()
+		image = image.cpu().numpy()
 	if type(image) is np.ndarray:
+		if image.ndim == 4: # Expecting image straight from CUDA with batch dimension
+			image = image[0]
 		image = image[0].astype(np.uint8)
 		image = Image.fromarray(image)
 	display(image)
 
-
 def view_noise(noise):
+	# Takes 3 out of 4 channels of noise and displays it. Scaling is arbitrary.
 	noise2 = noise.detach().clone().cpu()
 	noise2 = (noise2 / 4 + 0.5).clamp(0, 1)
 	noise2 = noise2.cpu().permute(0, 2, 3, 1).numpy()
@@ -135,6 +142,7 @@ def return_noise(noise, channel=None):
 	return noise2
 
 def view_noise_channels(noise):
+	# View all 4 channels of noise in greyscale
 	noise2 = noise.detach().clone().cpu()
 	noise2 = (noise2 / 4 + 0.5).clamp(0, 1)
 	noise2 = noise2.cpu().permute(0, 2, 3, 1).numpy()
@@ -143,8 +151,8 @@ def view_noise_channels(noise):
 	channels = Image.fromarray(channels).resize((1024, 256), Image.NEAREST).convert('RGB')
 	display(channels)
 
-def latents_to_rgb(latents): 
-	# adapted from https://huggingface.co/blog/TimothyAlexisVass/explaining-the-sdxl-latent-space#direct-conversion-of-sdxl-latents-to-rgb-with-a-linear-approximation
+def latents_to_rgb(latents):
+	# Adapted from https://huggingface.co/blog/TimothyAlexisVass/explaining-the-sdxl-latent-space#direct-conversion-of-sdxl-latents-to-rgb-with-a-linear-approximation
 	weights = ( # found using VAE_weights_finder.py
 		(43.8964,  16.3552, -35.4404, -21.6123),
 		(29.6584,  44.5785,  32.1088, -29.1559),
@@ -164,6 +172,7 @@ def create_latent(model, seed=SEED):
 	return latent.detach().cuda()
 
 def discrete_latent(model, seed=SEED):
+	# Snap latent to a point in VAE latent space. Useful for Experimentation.
 	x_t = create_latent(seed=seed)
 	x_t = 1/0.18215 * x_t
 	with torch.no_grad():
@@ -173,6 +182,7 @@ def discrete_latent(model, seed=SEED):
 	return x_t_2
 
 def img2noise(model, image, percent, generator=None, noise=None, mult=1):
+	# Adds some noise to an image and converts it to a latent. mult=10 for correct amount of noise according to scheduler.
 	if noise is None:
 		if generator is None:
 			generator=torch.Generator().manual_seed(10)
@@ -183,6 +193,7 @@ def img2noise(model, image, percent, generator=None, noise=None, mult=1):
 	return noisy_latent
 
 def normalize(x_t_orig, x_t_new):
+	# Fix noise statistics to match original image
 	orig_std = x_t_orig.std(axis=(2,3), keepdims=True)
 	orig_mean = x_t_orig.mean(axis=(2,3), keepdims=True)
 	x_t_new = (x_t_new / x_t_new.std(axis=(2,3), keepdims=True)) * orig_std
@@ -191,10 +202,13 @@ def normalize(x_t_orig, x_t_new):
 	return x_t_new
 
 def overlay_noise(x_t_modified, x_t_rolled, mask_rolled):
+	# Expects noise mask with white and black sections
 	result = np.where(mask_rolled == 255, np.array(x_t_rolled), np.array(x_t_modified))
 	return torch.from_numpy(result)
 
 def alpha_blend(images, masks=None):
+	# Stack image layers which have transparency
+	# If no masks, use image alpha for masks
 	if type(images[0]) is not Image.Image:
 		images = [Image.fromarray(image) for image in images]
 	images = [image.convert('RGBA') for image in images]
@@ -212,17 +226,20 @@ def alpha_blend(images, masks=None):
 ##########################################################################################################################
 
 def translate_entire_noise(roll, x_t):
+	# Default pan. 1 roll of latent array is 8 pixels in image space
 	x_t_modified = x_t.detach().clone().cpu()
 	x_t_modified = torch.from_numpy(np.roll(x_t_modified, -roll, axis=3)).cuda()
 	return x_t_modified
 
 def translate_entire_control(step, roll, control_image):
+	# Default pan. Step is usually 1 or 8
 	modified_control_image = np.array(control_image)
 	modified_control_image = np.roll(modified_control_image, -roll*step, axis=1)
 	modified_control_image = Image.fromarray(modified_control_image)
 	return modified_control_image
 
 def affine_parallax_noise(mask, roll, x_t):
+	# Custom rolling for parallax effect
 	x_t_modified = x_t.detach().clone().cpu()
 	for row in range(64):
 		dist = int((row+12) * -(2.5*roll) / 32)
@@ -235,7 +252,8 @@ def affine_parallax_noise(mask, roll, x_t):
 		x_t_modified = overlay_noise(x_t_modified, x_t_rolled, mask_rolled).cuda()
 	return x_t_modified
 
-def affine_parallax_noise_2(roll, x_t):
+def affine_parallax_noise_v(roll, x_t):
+	# Custom rolling for parallax effect (vista)
 	x_t_modified = x_t.detach().clone().cpu()
 	for row in range(64):
 		dist = -1*roll if row < 28 else -2*roll if row < 35 else -3*roll if row < 44 else -11*roll
@@ -250,12 +268,14 @@ def affine_parallax_noise_2(roll, x_t):
 	return x_t_modified
 
 def stereo_rotate_control(roll, control_image):
+	# ControlNet slightly lags 1 pixel behind each time to "reveal" more of the moving object
 	modified_control_image = np.array(control_image)
 	modified_control_image = np.roll(modified_control_image, -4*roll*7, axis=1)
 	modified_control_image = Image.fromarray(modified_control_image)
 	return modified_control_image
 
-def perspective_control_2(roll, control_image):
+def perspective_control_v(roll, control_image):
+	# Custom rolling for parallax effect (vista)
 	modified_control_image = np.array(control_image)
 	for row in range(512):
 		dist = -1*roll if row < 28*8 else -2*roll if row < 35*8 else -3*roll if row < 44*8 else -11*roll
@@ -270,6 +290,7 @@ def flip_horizontal_noise(x_t):
 	return x_t_modified2
 
 def upscale_noise(method, roll, x_t):
+	# Resizing using PIL for interpolation
 	x_t_modified = x_t.detach().clone().cpu()[0]
 	x_t_modified = x_t_modified / 5
 	x_t_modified = (x_t_modified + 0.5).clamp(0, 1)
@@ -288,6 +309,7 @@ def upscale_noise(method, roll, x_t):
 	return x_t_modified
 
 def grid_interp_noise(method, roll, x_t):
+	# Resizing using numpy for interpolation
 	x_t_modified = x_t.detach().clone().cpu().numpy()[0]
 	interpolators = [interpolate.RegularGridInterpolator((np.arange(0,512,8), np.arange(0,512,8)), 
 						x_t_modified[i, :, :], bounds_error=False, fill_value=None, method=method) for i in range(4)]
@@ -300,6 +322,7 @@ def grid_interp_noise(method, roll, x_t):
 	return x_t_modified
 
 def vae_interp(model, roll, x_t):
+	# VAE upscale for panning only
 	view_noise(x_t)
 	r = roll % 8
 	snap = int(np.floor((roll+3.5)/8))
@@ -320,6 +343,7 @@ def vae_interp(model, roll, x_t):
 	return x_t_2
 
 def VAE_zoom(model, switch_percent, roll, x_t):
+	# VAE upscale for zooming only
 	view_noise(x_t)
 	zoom_size = 512 + 2*roll
 	left_top = (zoom_size - 512)//2
@@ -335,15 +359,14 @@ def VAE_zoom(model, switch_percent, roll, x_t):
 		decoded_x_t_zoomed = [decoded_x_t_zoomed[i].crop((left_top, left_top, right_bottom, right_bottom)) for i in range(3)]
 		decoded_x_t_zoomed = [np.array(decoded_x_t_zoomed[i]) for i in range(3)]
 		decoded_x_t_zoomed = np.array(decoded_x_t_zoomed)
-		# decoded_x_t_zoomed = decoded_x_t_zoomed + 0.2*torch.randn_like(decoded_x_t_zoomed) # noising method
 		x_t_modified = model.vae.encode(torch.from_numpy(decoded_x_t_zoomed).unsqueeze(0).cuda())['latent_dist'].mean.detach()
 	x_t_modified = x_t_modified * 0.18215
 	view_image(ptp_utils.latent2image(model.vae, x_t_modified))
-	# x_t_modified = x_t_modified + 0.1*torch.randn_like(x_t_modified) # noising method
 	x_t_modified = normalize(x_t, x_t_modified)
 	return x_t_modified
 
 def VAE_rotate(model, switch_percent, roll, x_t):
+	# VAE upscale for rotating only
 	view_noise(x_t)
 	x_t_2 = x_t.detach().clone().cpu()
 	scale_factor = -2*(switch_percent/100) + 3
@@ -355,11 +378,9 @@ def VAE_rotate(model, switch_percent, roll, x_t):
 		decoded_x_t_rotated = [decoded_x_t_PIL[i].rotate(-roll) for i in range(3)]
 		decoded_x_t_rotated = [np.array(decoded_x_t_rotated[i]) for i in range(3)]
 		decoded_x_t_rotated = np.array(decoded_x_t_rotated)
-		# decoded_x_t_rotated = decoded_x_t_rotated + 0.2*torch.randn_like(decoded_x_t_rotated) # noising method
 		x_t_modified = model.vae.encode(torch.from_numpy(decoded_x_t_rotated).unsqueeze(0).cuda())['latent_dist'].mean.detach()
 	x_t_modified = x_t_modified * 0.18215
 	view_image(ptp_utils.latent2image(model.vae, x_t_modified))
-	# x_t_modified = x_t_modified + 0.1*torch.randn_like(x_t_modified) # noising method
 	x_t_modified = normalize(x_t, x_t_modified)
 	return x_t_modified
 
@@ -369,6 +390,7 @@ def VAE_rotate(model, switch_percent, roll, x_t):
 ##########################################################################################################################
 
 def interpret_optical_flow_col(step, map):
+	# Reads optical flow map into distances (parallellized for speed)
 	if step == 0:
 		return torch.zeros((512,512,2)).int()
 	map = np.uint8(np.array(map))
@@ -389,6 +411,7 @@ def interpret_optical_flow_col(step, map):
 	return torch.round(distances).int()
 
 def flow_mapping(distances, image, wrap):
+	# Applies optical flow to image (parallellized for speed)
 	i_idx, j_idx = torch.meshgrid(torch.arange(512).cuda(), torch.arange(512).cuda())
 	if wrap:
 		new_i = (i_idx + distances[:,:,0]) % 512
@@ -400,11 +423,12 @@ def flow_mapping(distances, image, wrap):
 	return image
 
 def compute_flow(model, map, wrap, switch_percent, roll, x_t, noising=False):
+	# Flow method for liquid noise. Can use scaling or noising
 	with torch.no_grad():
 		distances = interpret_optical_flow_col(roll, map).cuda()
 		x_t_2 = x_t.detach().clone()
 		scale_factor = -2*(switch_percent/100) + 3
-		if not noising: x_t_2 = x_t_2 / scale_factor
+		if not noising: x_t_2 = x_t_2 / scale_factor # scale variance
 		x_t_2 = 1/0.18215 * x_t_2
 		x_t_decoded = model.vae.decode((x_t_2).cuda())['sample']
 		x_t_decoded_new = x_t_decoded.clone()
@@ -418,12 +442,13 @@ def compute_flow(model, map, wrap, switch_percent, roll, x_t, noising=False):
 		return x_t_modified
 	
 def combine_images_flow(model, roll, images, flows, switch_percent, wrap, generator, noise_mult=1):
+	# Img2Vid with layers (flow)
 	assert(len(images)==len(flows)), "Number of images and flows must be equal"
 	noise = torch.randn((1,4,64,64), generator=generator).cuda()
 	noise_decoded = torch.from_numpy(ptp_utils.latent2image(model.vae, noise)).cuda().permute(0, 3, 1, 2)
 	image_layers = []
 	noise_layers = []
-	for i in range(len(images)):
+	for i in range(len(images)): # Process image and noise stacks separated first
 		distances = interpret_optical_flow_col(roll, flows[i]).cuda()
 		image = torch.from_numpy(np.array(images[i])).permute(2, 0, 1).unsqueeze(0).cuda()
 		modified_image = flow_mapping(distances, image.clone(), wrap)
@@ -434,7 +459,7 @@ def combine_images_flow(model, roll, images, flows, switch_percent, wrap, genera
 	stacked_img = alpha_blend(image_layers)
 	stacked_noise = alpha_blend(noise_layers, masks=image_layers)
 	noise_encoded = ptp_utils.image2latent(model.vae, np.array(stacked_noise))
-	final_latent = img2noise(stacked_img, switch_percent, noise=noise_encoded, mult=noise_mult)
+	final_latent = img2noise(stacked_img, switch_percent, noise=noise_encoded, mult=noise_mult) # Diffuse final stacks
 	return final_latent.cuda()
 
 
@@ -443,6 +468,7 @@ def combine_images_flow(model, roll, images, flows, switch_percent, wrap, genera
 ##########################################################################################################################
 
 def upscale_noise_tracking(model, image, coords, tiles, mult=2, seed=SEED, seamless=True, num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE):
+	# Seamless upscale meathod using noise tracking
 	print(coords)
 	denoise_amt = 0.05
 	switch_percent = (1-denoise_amt)*100
@@ -450,7 +476,7 @@ def upscale_noise_tracking(model, image, coords, tiles, mult=2, seed=SEED, seaml
 	coords_latent = (np.ceil(coords[0]*mult / 8).astype(int), np.ceil(coords[1]*mult / 8).astype(int))
 	noise = torch.randn((1,4,64,64), generator=generator).cuda()
 	if seamless:
-		noise = noise.repeat(1,1,tiles[0],tiles[1])
+		noise = noise.repeat(1,1,tiles[0],tiles[1]) # Tiled noise plane to sample from
 		noise_crop = noise[:, :, coords_latent[0]:coords_latent[0]+64, coords_latent[1]:coords_latent[1]+64]
 	else:
 		noise_crop = noise
@@ -467,6 +493,7 @@ def upscale_noise_tracking(model, image, coords, tiles, mult=2, seed=SEED, seaml
 	return denoised_image[0]
 
 def stitch(images, width, height):
+	# Make large image from smaller sections
 	sq_size = max(width, height)
 	stitch = Image.new('RGB', (sq_size, sq_size))
 	small_width, small_height, _ = images[0][0].shape
@@ -478,6 +505,7 @@ def stitch(images, width, height):
 	return stitch
 
 def correct_size(stitched, mult, tiles):
+	# Handle rounding errors for non-typical upscale factors (e.g. 3×)
 	width, height = stitched.size
 	width_error = tiles[0] * (np.ceil(512/mult) - 512/mult)
 	new_width = int(width - width_error) - 1
@@ -499,6 +527,7 @@ def upscale_and_stitch(model, image, mult=2, seed=SEED, seamless=True):
 	return stitched
 
 def magnifying_glass(model, image, coords, mult=2, seed=SEED, seamless=True):
+	# Arbitrary upscaling using noise tracking
 	width, height = image.size
 	tiles = (np.ceil(mult*width/512).astype(int), np.ceil(mult*height/512).astype(int))
 	result = upscale_noise_tracking(model, image, coords, tiles=tiles, mult=mult, seed=seed, seamless=seamless)
@@ -510,6 +539,7 @@ def magnifying_glass(model, image, coords, mult=2, seed=SEED, seamless=True):
 ##########################################################################################################################
 
 def combine_latents(model, seed_bg, seed_fg, prompt, mask, control, percent, num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE):
+	# Paste one noise onto another using a mask
 	if type(prompt) is str:
 		prompt = [prompt]
 	x_t_1 = create_latent(model, seed=seed_bg)
@@ -559,6 +589,7 @@ def convert_to_img_seq(path, change_fps=False):
 	return images_cropped
 
 def extract_optical_flow(images):
+	# CV2 optical flow instead of custom. Incompatible with flow maps
 	flows = []
 	for i in range(1, len(images)):
 		prev = cv2.cvtColor(np.array(images[i-1]), cv2.COLOR_RGB2GRAY)
@@ -568,6 +599,7 @@ def extract_optical_flow(images):
 	return flows
 
 def apply_optical_flow(image, flow):
+	# CV2 optical flow instead of custom. Incompatible with flow maps
 	w, h = image.size
 	flow = cv2.resize(flow, (w, h))
 	flow = -flow
@@ -581,6 +613,7 @@ def apply_optical_flow(image, flow):
 	return new_image
 
 def video_style_transfer(model, prompt, path, percent, seed=SEED, num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE):
+	# Style transfer using noise tracking to reduce distortion
 	if type(prompt) is str:
 		prompt = [prompt]
 	images = convert_to_img_seq(path, change_fps=True)
@@ -617,6 +650,13 @@ def create_animation(model, prompt, control=None, flows=None, mask=None, images=
 					wrap=True, noise_mult=1, controller=EmptyControl(), noise_anim="flow", control_anim="None", 
 					num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE, cond_scale=COND_SCALE, 
 					flip=False, fps=12.5, seed=SEED, save=True):
+	
+	# Call this function to create a video. Don't pass in images for prompt2vid. 
+	# Pass one image and flow map for img2vid. Pass a list of images and flows for layered images.
+	# Most of the time, use "flow" for noise_anim (liquid noise)
+	# noise_anim: pan, parallax, parallaxV, upscale, grid_interp, vae_interp, zoom, rotate, flow, noising
+	# control_anim: pan_small, pan, perspective, perspectiveV
+
 	torch.cuda.empty_cache()
 	model.cond_scale = cond_scale
 	generator=torch.Generator().manual_seed(seed)
@@ -649,8 +689,8 @@ def create_animation(model, prompt, control=None, flows=None, mask=None, images=
 				noise_func = translate_entire_noise
 		elif noise_anim == "parallax":
 			noise_func = partial(affine_parallax_noise, mask)
-		elif noise_anim == "parallax2":
-			noise_func = affine_parallax_noise_2
+		elif noise_anim == "parallaxV":
+			noise_func = affine_parallax_noise_v
 		elif noise_anim == "upscale":
 			noise_func = partial(upscale_noise, Image.LANCZOS)
 		elif noise_anim == "grid_interp":
@@ -669,8 +709,8 @@ def create_animation(model, prompt, control=None, flows=None, mask=None, images=
 			control_func = partial(translate_entire_control, 8)
 		elif control_anim == "perspective":
 			control_func = stereo_rotate_control
-		elif control_anim == "perspective2":
-			control_func = perspective_control_2
+		elif control_anim == "perspectiveV":
+			control_func = perspective_control_v
 		else:
 			control_func = None
 	else:
