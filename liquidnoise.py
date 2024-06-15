@@ -751,8 +751,10 @@ def create_animation(model, prompt, control=None, flows=None, mask=None, images=
 		gif_PIL = [Image.fromarray(np.uint8(img)).resize((512, 512), Image.NEAREST) for img in gif_images]
 		id = np.random.randint(0,10000)
 		duration = int(1000/fps)
-		gif_PIL[0].save(f'output/roll{id}.gif', format='GIF', append_images=gif_PIL[1:], save_all=True, duration=duration, loop=0)
-		print(f"saved as output/roll{id}.gif")
+		path = f'output/roll{id}.gif'
+		gif_PIL[0].save(path, format='GIF', append_images=gif_PIL[1:], save_all=True, duration=duration, loop=0)
+		print(f"saved as {path}")
+		return path
 	else:
 		return gif_images
 
