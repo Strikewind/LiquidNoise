@@ -14,13 +14,13 @@ Here are some example animations generated using the Zero-shot methods:
 
 | Example | Description |
 |---------|-------------|
-| <img src="output/roll426.gif" alt="Example 1" width="400px"> | Prompt-to-video simple 2D pan using noise crystal method. |
-| <img src="output/roll6715.gif" alt="Example 2" width="400px"> | Prompt-to-video dolly parallax using noise crystal method. |
-| <img src="output/roll9594.gif" alt="Example 3" width="400px"> | Prompt-to-video landscape parallax using noise crystal method. |
-| <img src="output/roll3521.gif" alt="Example 4" width="400px"> | Prompt-to-video nature scene using liquid noise method. |
-| <img src="output/roll549.gif" alt="Example 5" width="400px"> | Image-to-video of Adventure Time using liquid noise method. |
-| <img src="output/roll6966.gif" alt="Example 6" width="400px"> | Image-to-video using 3 image layers. |
-| <img src="output/vid2vidgif.gif" alt="Example 7" width="400px"> | Improved video-to-video style transfer with noise tracking. |
+| <img src="output/roll426.gif" alt="Example 1" width="200px"> | Prompt-to-video simple 2D pan using noise crystal method. |
+| <img src="output/roll6715.gif" alt="Example 2" width="200px"> | Prompt-to-video dolly parallax using noise crystal method. |
+| <img src="output/roll9594.gif" alt="Example 3" width="200px"> | Prompt-to-video landscape parallax using noise crystal method. |
+| <img src="output/roll3521.gif" alt="Example 4" width="200px"> | Prompt-to-video nature scene using liquid noise method. |
+| <img src="output/roll549.gif" alt="Example 5" width="200px"> | Image-to-video of Adventure Time using liquid noise method. |
+| <img src="output/roll6966.gif" alt="Example 6" width="200px"> | Image-to-video using 3 image layers. |
+| <img src="output/vid2vidgif.gif" alt="Example 7" width="200px"> | Improved video-to-video style transfer with noise tracking. |
 
 You can find more examples in the [gallery](https://strikewind.github.io/FYP-Supplementary/).
 
