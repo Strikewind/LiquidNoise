@@ -1,12 +1,9 @@
 # Zero-shot Video Using Image Diffusion Models
 
 This repository features the _Noise Crystallization_ and _Liquid Noise_ methods of creating animations using **only** Stable Diffusion v1.5 (and in theory these methods can be applied on top of any image model). The animations below were made without training any additional weights or making any video model.\
-
 This repository provides both an ipynb notebook and a Gradio-based user interface.\
-
 Note: within this repository contains code from Google's [Prompt-to-prompt repo](https://github.com/google/prompt-to-prompt), as well as a copy of the [Diffusers repo](https://github.com/huggingface/diffusers). You can include the latest version of Diffusers by installing the library, or by replacing the `/diffusers` folder with `/src/diffusers` from the original repo.\
-
-This repo was submitted as supplementary to a master's thesis for partial fulfilment of a master's degree at Imperial College London.\
+This repo was submitted as supplementary to a master's thesis for partial fulfilment of a master's degree at Imperial College London.
 
 ## Examples
 
