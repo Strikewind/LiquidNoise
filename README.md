@@ -1,14 +1,28 @@
 # Zero-shot Video Using Image Diffusion Models
 
-This repository features the _Noise Crystallization_ and _Liquid Noise_ methods of creating animations using **only** Stable Diffusion v1.5 (and in theory these methods can be applied on top of any image model). The animations below were made without training any additional weights or making any video model.
+This repository features the _Noise Crystallization_ and _Liquid Noise_ methods of creating animations using **only** Stable Diffusion v1.5 (and in theory these methods can be applied on top of any image model). The animations below were made without training any additional weights or making any video model.\\
 
-This repository provides both an ipynb notebook and a Gradio-based user interface.
+This repository provides both an ipynb notebook and a Gradio-based user interface.\\
 
-Note: within this repository contains code from Google's [Prompt-to-prompt repo](https://github.com/google/prompt-to-prompt), as well as a copy of the [Diffusers repo](https://github.com/huggingface/diffusers). You can include the latest version of Diffusers by installing the library, or by replacing the `/diffusers` folder with `/src/diffusers` from the original repo.
+Note: within this repository contains code from Google's [Prompt-to-prompt repo](https://github.com/google/prompt-to-prompt), as well as a copy of the [Diffusers repo](https://github.com/huggingface/diffusers). You can include the latest version of Diffusers by installing the library, or by replacing the `/diffusers` folder with `/src/diffusers` from the original repo.\\
 
-This repo was submitted as supplementary to a master's thesis for partial fulfilment of a master's degree at Imperial College London.
+This repo was submitted as supplementary to a master's thesis for partial fulfilment of a master's degree at Imperial College London.\\
 
 ## Examples
+
+Here are some example animations generated using the Zero-shot methods:
+
+| Example | Description |
+|---------|-------------|
+| ![Example 1](output/roll426.gif) | Prompt-to-video simple 2D pan using noise crystal method. |
+| ![Example 1](output/roll6715.gif) | Prompt-to-video dolly parallax using noise crystal method. |
+| ![Example 2](output/roll9594.gif) | Prompt-to-video landscape parallax using noise crystal method. |
+| ![Example 3](output/roll3521.gif) | Prompt-to-video nature scene using liquid noise method. |
+| ![Example 4](output/roll549.gif) | Image-to-video of Adventure Time using liquid noise method. |
+| ![Example 5](output/roll6966.gif) | Image-to-video using 3 image layers. |
+| ![Example 5](output/vid2vidgif.gif) | Improved video-to-video style transfer with noise tracking. |
+
+You can find more examples in the [gallery](https://strikewind.github.io/FYP-Supplementary/).
 
 ## Installation Instructions
 
@@ -54,7 +68,6 @@ cd path/to/LiquidNoise
 ```sh
 conda env create -f environment.yaml
 ```
-```
 4. Run the Gradio UI:
 ```sh
 ./run_gradioUI.sh
@@ -63,9 +76,9 @@ conda env create -f environment.yaml
 The default location for the UI is http://127.0.0.1:7860/.
 
 ### Troubleshooting
-If you encounter issues with the Conda environment setup, ensure that you have either Anaconda or Miniconda installed on your system. If the conda command is not recognized, you might need to add Conda to your system's PATH.
-If your environment is installed in a non-default location, edit the batch or bash file to include your environment location.
-You may need to use `conda activate fyp` before running the UI if the wrong environment is used.
+If you encounter issues with the Conda environment setup, ensure that you have either Anaconda or Miniconda installed on your system. If the conda command is not recognized, you might need to add Conda to your system's PATH.\
+If your environment is installed in a non-default location, edit the batch or bash file to include your environment location.\
+You may need to use `conda activate fyp` before running the UI if the wrong environment is used.\
 
 ## License
 This project is licensed under the MIT License. 
