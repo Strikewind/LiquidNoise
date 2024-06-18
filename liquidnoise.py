@@ -20,6 +20,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import ptp_utils_new as ptp_utils
+from ptp_utils_new import *
 from functools import partial
 import torch
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, DDIMScheduler
@@ -30,8 +32,7 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
-import ptp_utils_new as ptp_utils
-from ptp_utils_new import *
+from tqdm import tqdm
 
 torch.cuda.empty_cache()
 device = torch.device('cuda:0')
@@ -59,14 +60,14 @@ class Model():
 def run_and_display(prompt, model, controller=EmptyControl(), latent=None, control=None, 
 					num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE, seed=SEED):
 	# Run diffusion on one prompt and display the result. ControlNet optional.
-    if type(prompt) is str:
-        prompt = [prompt]
-    generator=torch.Generator().manual_seed(seed)
-    images, _, x_t = ptp_utils.text2image_ldm_stable(model=model, prompt=prompt, controller=controller, latent=latent, control=control, 
+	if type(prompt) is str:
+		prompt = [prompt]
+	generator=torch.Generator().manual_seed(seed)
+	images, _, x_t = ptp_utils.text2image_ldm_stable(model=model, prompt=prompt, controller=controller, latent=latent, control=control, 
 													 num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator)
-    ptp_utils.view_images(images)
-    torch.cuda.empty_cache()
-    return images, x_t
+	ptp_utils.view_images(images)
+	torch.cuda.empty_cache()
+	return images, x_t
 
 ##########################################################################################################################
 #-------------------------------------------------Plotting and Latents---------------------------------------------------#
@@ -116,7 +117,7 @@ def view_image(image):
 	if type(image) is np.ndarray:
 		if image.ndim == 4: # Expecting image straight from CUDA with batch dimension
 			image = image[0]
-		image = image[0].astype(np.uint8)
+		image = image.astype(np.uint8)
 		image = Image.fromarray(image)
 	display(image)
 
@@ -181,12 +182,25 @@ def discrete_latent(model, seed=SEED):
 	x_t_2 = x_t_2 * 0.18215
 	return x_t_2
 
+def crop_to_centre(image, size):
+	# Crops image to centre square
+	width, height = image.size
+	sq_size = min(width, height) #crop to square
+	left = (width - sq_size) // 2
+	top = (height - sq_size) // 2
+	right = (width + sq_size) // 2
+	bottom = (height + sq_size) // 2
+	image = image.crop((left, top, right, bottom))
+	image = image.resize((size, size), Image.BICUBIC)
+	return image
+
 def img2noise(model, image, percent, generator=None, noise=None, mult=1):
 	# Adds some noise to an image and converts it to a latent. mult=10 for correct amount of noise according to scheduler.
 	if noise is None:
 		if generator is None:
 			generator=torch.Generator().manual_seed(10)
 		noise = torch.randn((1,4,64,64), generator=generator).cuda()
+	image = crop_to_centre(image, 512) # make square
 	latent = ptp_utils.image2latent(model.vae, np.array(image))
 	timesteps = torch.LongTensor([max(1,int((100-(percent))*mult))]).cuda()
 	noisy_latent = model.scheduler.add_noise(latent, noise, timesteps)
@@ -440,10 +454,23 @@ def compute_flow(model, map, wrap, switch_percent, roll, x_t, noising=False):
 		if noising: x_t_modified = x_t_modified + 0.05*torch.randn_like(x_t_modified) # noising method
 		x_t_modified = normalize(x_t, x_t_modified)
 		return x_t_modified
+
+def control_flow(map, wrap, roll, control_image):
+	# Flow method for ControlNet.
+	with torch.no_grad():
+		distances = interpret_optical_flow_col(roll, map).cuda()
+		control_image = np.array(control_image)
+		control_image = torch.from_numpy(control_image).permute(2, 0, 1).unsqueeze(0).cuda()
+		control_image_new = control_image.clone()
+		control_image_new = flow_mapping(distances, control_image_new, wrap)
+		control_image_new = control_image_new[0].cpu().numpy().transpose(1, 2, 0)
+		control_image_new = Image.fromarray(control_image_new).convert('RGB')
+		return control_image_new
 	
 def combine_images_flow(model, roll, images, flows, switch_percent, wrap, generator, noise_mult=1):
 	# Img2Vid with layers (flow)
 	assert(len(images)==len(flows)), "Number of images and flows must be equal"
+	images = [crop_to_centre(image, 512) for image in images]
 	noise = torch.randn((1,4,64,64), generator=generator).cuda()
 	noise_decoded = torch.from_numpy(ptp_utils.latent2image(model.vae, noise)).cuda().permute(0, 3, 1, 2)
 	image_layers = []
@@ -459,7 +486,7 @@ def combine_images_flow(model, roll, images, flows, switch_percent, wrap, genera
 	stacked_img = alpha_blend(image_layers)
 	stacked_noise = alpha_blend(noise_layers, masks=image_layers)
 	noise_encoded = ptp_utils.image2latent(model.vae, np.array(stacked_noise))
-	final_latent = img2noise(stacked_img, switch_percent, noise=noise_encoded, mult=noise_mult) # Diffuse final stacks
+	final_latent = img2noise(model, stacked_img, switch_percent, noise=noise_encoded, mult=noise_mult) # Diffuse final stacks
 	return final_latent.cuda()
 
 
@@ -468,7 +495,7 @@ def combine_images_flow(model, roll, images, flows, switch_percent, wrap, genera
 ##########################################################################################################################
 
 def upscale_noise_tracking(model, image, coords, tiles, mult=2, seed=SEED, seamless=True, num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE):
-	# Seamless upscale meathod using noise tracking
+	# Seamless upscale method using noise tracking
 	print(coords)
 	denoise_amt = 0.05
 	switch_percent = (1-denoise_amt)*100
@@ -476,13 +503,14 @@ def upscale_noise_tracking(model, image, coords, tiles, mult=2, seed=SEED, seaml
 	coords_latent = (np.ceil(coords[0]*mult / 8).astype(int), np.ceil(coords[1]*mult / 8).astype(int))
 	noise = torch.randn((1,4,64,64), generator=generator).cuda()
 	if seamless:
-		noise = noise.repeat(1,1,tiles[0],tiles[1]) # Tiled noise plane to sample from
+		noise = noise.repeat(1,1,tiles[0]+1,tiles[1]+1) # Tiled noise plane to sample from
 		noise_crop = noise[:, :, coords_latent[0]:coords_latent[0]+64, coords_latent[1]:coords_latent[1]+64]
 	else:
 		noise_crop = noise
 	small_crop = np.ceil(512/mult).astype(int)
 	image_crop = image.crop((coords[0], coords[1], coords[0]+small_crop, coords[1]+small_crop))
 	image_resized = image_crop.resize((512, 512), Image.BILINEAR)
+	print(image_resized.size)###
 	image_resized = Image.blend(image_resized, image_resized.filter(ImageFilter.EDGE_ENHANCE), 0.5)
 	# display(image_resized)
 	noisy_latent = img2noise(model, image_resized, switch_percent, noise=noise_crop)
@@ -576,16 +604,7 @@ def convert_to_img_seq(path, change_fps=False):
 			frame = Image.fromarray(frame).convert('RGB')
 			images.append(frame)
 	images_cropped = []
-	for frame in images:
-		width, height = frame.size
-		sq_size = min(width, height) #crop to square
-		left = (width - sq_size) // 2
-		top = (height - sq_size) // 2
-		right = (width + sq_size) // 2
-		bottom = (height + sq_size) // 2
-		frame = frame.crop((left, top, right, bottom))
-		frame = frame.resize((512, 512), Image.BICUBIC)
-		images_cropped.append(frame)
+	images_cropped = [crop_to_centre(image, 512) for image in images]
 	return images_cropped
 
 def extract_optical_flow(images):
@@ -612,7 +631,7 @@ def apply_optical_flow(image, flow):
 	new_image = Image.fromarray(cv2.cvtColor(new_image_cv2, cv2.COLOR_BGR2RGB))
 	return new_image
 
-def video_style_transfer(model, prompt, path, percent, seed=SEED, num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE):
+def video_style_transfer(model, prompt, path, percent, seed=SEED, num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE, tracking=True, see_noise=False, progress_callback=None):
 	# Style transfer using noise tracking to reduce distortion
 	if type(prompt) is str:
 		prompt = [prompt]
@@ -622,24 +641,37 @@ def video_style_transfer(model, prompt, path, percent, seed=SEED, num_inference_
 	noise = torch.randn((1,4,64,64), generator=generator).cuda()
 	curr_noise = Image.fromarray(ptp_utils.latent2image(model.vae, noise)[0])
 	final_frames = []
+
+	progress_bar = tqdm(total=len(images), desc="Creating animation", unit="frame")
+
 	for i in range(1, len(images)):
-		curr_noise = apply_optical_flow(curr_noise, flows[i-1])
-		# final_frames.append(np.array(curr_noise))
-		encoded_noise = ptp_utils.image2latent(model.vae, np.array(curr_noise))
-		latent = img2noise(model, images[i], percent, noise=encoded_noise, mult=10)
-		denoised_image, _, _ = ptp_utils.text2image_ldm_stable(model, prompt, latent=latent, precalced=True, switch_percent=percent, 
-														 num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator)
-		clear_output(wait=True)
-		view_image(denoised_image)
-		view_noise(latent)
-		print("frame:", i, "of", len(images))
-		final_frames.append(denoised_image[0])
+		if tracking: curr_noise = apply_optical_flow(curr_noise, flows[i-1])
+		if see_noise:
+			final_frames.append(np.array(curr_noise)) # output tracked noise
+		else:
+			encoded_noise = ptp_utils.image2latent(model.vae, np.array(curr_noise))
+			latent = img2noise(model, images[i], percent, noise=encoded_noise, mult=10)
+			denoised_image, _, _ = ptp_utils.text2image_ldm_stable(model, prompt, latent=latent, precalced=True, switch_percent=percent, 
+															num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator)
+			clear_output(wait=True)
+			view_image(denoised_image)
+			view_noise(latent)
+			print("frame:", i, "of", len(images))
+			final_frames.append(denoised_image[0])
+
+		progress_bar.update(1)
+		if progress_callback is not None:
+			progress_callback((i + 1)/len(images))
+	
+	progress_bar.close()
 	
 	gif_PIL = [Image.fromarray(np.uint8(img)).resize((512, 512), Image.NEAREST) for img in final_frames]
 	id = np.random.randint(0,10000)
 	duration = 80
-	gif_PIL[0].save(f'output/transfer{id}.gif', format='GIF', append_images=gif_PIL[1:], save_all=True, duration=duration, loop=0)
-	print(f"saved as output/transfer{id}.gif")
+	path = f'output/transfer{id}.gif'
+	gif_PIL[0].save(path, format='GIF', append_images=gif_PIL[1:], save_all=True, duration=duration, loop=0)
+	print(f"saved as {path}")
+	return path
 		
 
 ##########################################################################################################################
@@ -649,13 +681,13 @@ def video_style_transfer(model, prompt, path, percent, seed=SEED, num_inference_
 def create_animation(model, prompt, control=None, flows=None, mask=None, images=None, start=0, stop=16, switch_percent=70, 
 					wrap=True, noise_mult=1, controller=EmptyControl(), noise_anim="flow", control_anim="None", 
 					num_inference_steps=NUM_DIFFUSION_STEPS, guidance_scale=GUIDANCE_SCALE, cond_scale=COND_SCALE, 
-					flip=False, fps=12.5, seed=SEED, save=True):
+					flip=False, fps=12.5, seed=SEED, save=True, progress_callback=None):
 	
 	# Call this function to create a video. Don't pass in images for prompt2vid. 
 	# Pass one image and flow map for img2vid. Pass a list of images and flows for layered images.
 	# Most of the time, use "flow" for noise_anim (liquid noise)
 	# noise_anim: pan, parallax, parallaxV, upscale, grid_interp, vae_interp, zoom, rotate, flow, noising
-	# control_anim: pan_small, pan, perspective, perspectiveV
+	# control_anim: pan_small, pan, perspective, perspectiveV, flow
 
 	torch.cuda.empty_cache()
 	model.cond_scale = cond_scale
@@ -703,9 +735,7 @@ def create_animation(model, prompt, control=None, flows=None, mask=None, images=
 			noise_func = partial(VAE_rotate, model, switch_percent)
 		else:
 			noise_func = None
-		if control_anim == "pan_small":
-			control_func = partial(translate_entire_control, 1)
-		elif control_anim == "pan":
+		if control_anim == "pan":
 			control_func = partial(translate_entire_control, 8)
 		elif control_anim == "perspective":
 			control_func = stereo_rotate_control
@@ -718,7 +748,15 @@ def create_animation(model, prompt, control=None, flows=None, mask=None, images=
 			noise_func = partial(compute_flow, model, flows, wrap, switch_percent, noising=True)
 		else:
 			noise_func = partial(compute_flow, model, flows, wrap, switch_percent, noising=False)
-		control_func = None
+		if control_anim == "pan_small":
+			control_func = partial(translate_entire_control, 1)
+		elif control_anim == "flow" and type(flows) is not list:
+			control_func = partial(control_flow, flows, wrap)
+		else:	
+			control_func = None
+
+	total = abs(stop-start)
+	progress_bar = tqdm(total=total, desc="Creating animation", unit="frame")
 
 	for roll in range(start, stop, step):
 		if precalced_latent is None:
@@ -732,6 +770,8 @@ def create_animation(model, prompt, control=None, flows=None, mask=None, images=
 					curr_control = None
 				if noise_func is not None:
 					modified_latent = noise_func(roll, precalced_latent).cuda()
+				else:
+					modified_latent = precalced_latent
 			else: # layer images
 				modified_latent = combine_images_flow(model, roll, images, flows, switch_percent, wrap, generator, noise_mult)
 				curr_control = None
@@ -743,9 +783,16 @@ def create_animation(model, prompt, control=None, flows=None, mask=None, images=
 			display(control_func(roll, control))
 		# view_noise(noise_func(roll, x_t))
 		view_noise(final_latent)
-		print("frame: ", roll)
+		# print("frame: ", roll)
 		gif_images.append(image[0])
 		torch.cuda.empty_cache()
+
+
+		progress_bar.update(1)
+		if progress_callback is not None:
+			progress_callback(((roll + 1)-start)/total)
+	
+	progress_bar.close()
 
 	if save:
 		gif_PIL = [Image.fromarray(np.uint8(img)).resize((512, 512), Image.NEAREST) for img in gif_images]
@@ -763,54 +810,54 @@ def create_animation(model, prompt, control=None, flows=None, mask=None, images=
 ##########################################################################################################################
 
 def sobel_edge_detection(image, kernel, blur):
-    if image.ndim == 3: # greyscale
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    image = cv2.GaussianBlur(image, (blur, blur), 0)
-    sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=kernel)
-    sobely = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=kernel)
-    magnitudes = np.sqrt(sobelx**2 + sobely**2)
-    orientations = np.arctan2(sobely, sobelx)
-    return magnitudes, orientations
+	if image.ndim == 3: # greyscale
+		image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+	image = cv2.GaussianBlur(image, (blur, blur), 0)
+	sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=kernel)
+	sobely = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=kernel)
+	magnitudes = np.sqrt(sobelx**2 + sobely**2)
+	orientations = np.arctan2(sobely, sobelx)
+	return magnitudes, orientations
 
 def weighted_orientations(magnitudes, orientations):
-    magnitudes = np.where(abs(orientations)<np.pi/2, magnitudes, 0)
-    weighted_orientations = magnitudes * np.exp(1j * orientations)
-    average_directions = np.angle(np.sum(weighted_orientations, axis=(1)))
+	magnitudes = np.where(abs(orientations)<np.pi/2, magnitudes, 0)
+	weighted_orientations = magnitudes * np.exp(1j * orientations)
+	average_directions = np.angle(np.sum(weighted_orientations, axis=(1)))
 
-    # plt.imshow(np.abs(weighted_orientations))
-    # plt.colorbar()
-    # plt.show()
+	# plt.imshow(np.abs(weighted_orientations))
+	# plt.colorbar()
+	# plt.show()
 
-    # plt.imshow(np.angle(weighted_orientations), vmin=-np.pi, vmax=np.pi, cmap='hsv')
-    # plt.colorbar()
-    # plt.show()
-    # plt.plot(average_directions)
-    # plt.title("Average Directions")
-    # plt.xlabel("frame")
-    # plt.ylabel("angle (radians)")
-    # plt.ylim(-np.pi/2, np.pi/2)
-    # plt.show()
-    return average_directions
+	# plt.imshow(np.angle(weighted_orientations), vmin=-np.pi, vmax=np.pi, cmap='hsv')
+	# plt.colorbar()
+	# plt.show()
+	# plt.plot(average_directions)
+	# plt.title("Average Directions")
+	# plt.xlabel("frame")
+	# plt.ylabel("angle (radians)")
+	# plt.ylim(-np.pi/2, np.pi/2)
+	# plt.show()
+	return average_directions
 
 def analyze_smoothness(average_directions):
-    second_derivative = np.diff(average_directions, n=2)
-    smoothness = np.std(second_derivative)
-    smoothness = np.exp(-smoothness)
-    
-    # plt.plot(second_derivative)
-    # plt.title("Second Derivative")
-    # plt.xlabel("frame")
-    # plt.ylim(-3, 3)
-    # plt.show()
-    return smoothness
+	second_derivative = np.diff(average_directions, n=2)
+	smoothness = np.std(second_derivative)
+	smoothness = np.exp(-smoothness)
+		
+	# plt.plot(second_derivative)
+	# plt.title("Second Derivative")
+	# plt.xlabel("frame")
+	# plt.ylim(-3, 3)
+	# plt.show()
+	return smoothness
 
 def temporal_smoothness_metric(x_t_slices, kernel=3, blur=3):
-    if type(x_t_slices) is not np.ndarray:
-        x_t_slices = np.array(x_t_slices)
-    magnitudes, orientations = sobel_edge_detection(x_t_slices, kernel=kernel, blur=blur)
-    average_directions = weighted_orientations(magnitudes, orientations)
-    smoothness = analyze_smoothness(average_directions)
-    return smoothness
+	if type(x_t_slices) is not np.ndarray:
+		x_t_slices = np.array(x_t_slices)
+	magnitudes, orientations = sobel_edge_detection(x_t_slices, kernel=kernel, blur=blur)
+	average_directions = weighted_orientations(magnitudes, orientations)
+	smoothness = analyze_smoothness(average_directions)
+	return smoothness
 
 def X_T_slices(path, line=350, direction="horizontal", thickness=1):
 	images = convert_to_img_seq(path)
