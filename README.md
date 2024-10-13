@@ -8,6 +8,8 @@ Note: within this repository contains code from Google's [Prompt-to-prompt repo]
 
 This repo was submitted as supplementary to a master's thesis for partial fulfilment of a master's degree at Imperial College London.
 
+See 8-page paper [here](https://arxiv.org/abs/2410.05322)
+
 ## Examples
 
 Here are some example animations generated using the Zero-shot methods:
